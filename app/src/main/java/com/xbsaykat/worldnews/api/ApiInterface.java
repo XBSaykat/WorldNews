@@ -12,4 +12,11 @@ public interface ApiInterface {
             @Query("country") String country,
             @Query("apiKey") String apiKey
     );
+    @GET("everything")
+    Call<News> getNewsSearch(
+      @Query("q") String keyword,
+      @Query("language") String language,
+      @Query("sortBy") String sortBy,
+      @Query("apiKey") String apiKey
+    );
 }
