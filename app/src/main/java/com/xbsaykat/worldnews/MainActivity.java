@@ -2,6 +2,9 @@ package com.xbsaykat.worldnews;
 
 import android.app.SearchManager;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -10,6 +13,9 @@ import com.google.android.material.snackbar.Snackbar;
 import android.view.View;
 
 import androidx.appcompat.widget.SearchView;
+import androidx.core.app.ActivityOptionsCompat;
+import androidx.core.app.ShareCompat;
+import androidx.core.util.Pair;
 import androidx.core.view.GravityCompat;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 
@@ -21,6 +27,7 @@ import com.xbsaykat.worldnews.api.ApiInterface;
 import com.xbsaykat.worldnews.models.Article;
 import com.xbsaykat.worldnews.models.News;
 
+import androidx.core.view.ViewCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -31,6 +38,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import android.view.Menu;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -41,13 +50,14 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener {
+        implements NavigationView.OnNavigationItemSelectedListener,SwipeRefreshLayout.OnRefreshListener {
     public static final String API_KEY = "f32a43eaebaa4b2c990f0921746490b1";
     private RecyclerView recyclerView;
     private RecyclerView.LayoutManager layoutManager;
     private List<Article> articles = new ArrayList<>();
     private Adapter adapter;
     private SwipeRefreshLayout swipeRefreshLayout;
+    private TextView topHeadline;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -56,8 +66,9 @@ public class MainActivity extends AppCompatActivity
         setSupportActionBar(toolbar);
 
         swipeRefreshLayout=findViewById(R.id.swipe_refresh_layout);
-        swipeRefreshLayout.setOnRefreshListener((SwipeRefreshLayout.OnRefreshListener) this);
+        swipeRefreshLayout.setOnRefreshListener(this);
         swipeRefreshLayout.setColorSchemeResources(R.color.colorAccent);
+        topHeadline=findViewById(R.id.top_headline);
 
 
         recyclerView = findViewById(R.id.recyclerView);
@@ -67,7 +78,7 @@ public class MainActivity extends AppCompatActivity
         recyclerView.setNestedScrollingEnabled(false);
 
         
-        LoadJson("q");
+        onLoadingSwipeRefresh("");
 
         
         DrawerLayout drawer = findViewById(R.id.drawer_layout);
@@ -80,6 +91,9 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void LoadJson(final String keyword) {
+
+        topHeadline.setVisibility(View.INVISIBLE);
+        swipeRefreshLayout.setRefreshing(true);
         ApiInterface apiInterface = ApiClient.getApiClient().create(ApiInterface.class);
 
         String country = Utils.getCountry();
@@ -104,16 +118,53 @@ public class MainActivity extends AppCompatActivity
                     adapter = new Adapter(articles, MainActivity.this);
                     recyclerView.setAdapter(adapter);
                     adapter.notifyDataSetChanged();
+                    initListener();
+                    topHeadline.setVisibility(View.VISIBLE);
+                    swipeRefreshLayout.setRefreshing(false);
                 }
             }
 
             @Override
             public void onFailure(Call<News> call, Throwable t) {
+                topHeadline.setVisibility(View.INVISIBLE);
+                swipeRefreshLayout.setRefreshing(false);
                 Toast.makeText(MainActivity.this,"No Result",Toast.LENGTH_LONG).show();
             }
         });
 
 
+    }
+
+    private void initListener() {
+        adapter.setOnItemClickListener(new Adapter.OnItemClickListener() {
+            @Override
+            public void onItemClick(View view, int position) {
+                ImageView imageView = view.findViewById(R.id.img);
+                Intent intent = new Intent(MainActivity.this, DetailActivity.class);
+
+                Article article = articles.get(position);
+                intent.putExtra("url", article.getUrl());
+                intent.putExtra("title", article.getTitle());
+                intent.putExtra("img",  article.getUrlToImage());
+                intent.putExtra("date",  article.getPublishedAt());
+                intent.putExtra("source",  article.getSource().getName());
+                intent.putExtra("author",  article.getAuthor());
+
+                Pair<View, String> pair = Pair.create((View)imageView, ViewCompat.getTransitionName(imageView));
+                ActivityOptionsCompat optionsCompat = ActivityOptionsCompat.makeSceneTransitionAnimation(
+                        MainActivity.this,
+                        pair
+                );
+
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                    startActivity(intent, optionsCompat.toBundle());
+                }else {
+                    startActivity(intent);
+                }
+
+            }
+        });
     }
 
     @Override
@@ -139,14 +190,14 @@ public class MainActivity extends AppCompatActivity
             @Override
             public boolean onQueryTextSubmit(String query) {
                 if(query.length() > 2){
-                    LoadJson(query);
+                    onLoadingSwipeRefresh(query);
                 }
                 return false;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
-                LoadJson(newText);
+                //LoadJson(newText);
                 return false;
             }
         });
@@ -175,18 +226,14 @@ public class MainActivity extends AppCompatActivity
     public boolean onNavigationItemSelected(MenuItem item) {
         // Handle navigation view item clicks here.
         int id = item.getItemId();
-
-        if (id == R.id.nav_home) {
-            // Handle the camera action
-        } else if (id == R.id.nav_gallery) {
-
-        } else if (id == R.id.nav_slideshow) {
-
-        } else if (id == R.id.nav_tools) {
-
-        } else if (id == R.id.nav_share) {
-
+        if (id == R.id.nav_share) {
+            ShareCompat.IntentBuilder.from(MainActivity.this)
+                    .setType("text/plain")
+                    .setChooserTitle("Chooser title")
+                    .setText("https://play.google.com/store/apps/details?id=com.xbsaykat.worldnews")
+                    .startChooser();
         } else if (id == R.id.nav_send) {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + MainActivity.this.getPackageName())));
 
         }
 
@@ -196,4 +243,17 @@ public class MainActivity extends AppCompatActivity
     }
 
 
+    @Override
+    public void onRefresh() {
+        LoadJson("");
+    }
+
+    private void onLoadingSwipeRefresh(final String keyword){
+        swipeRefreshLayout.post(new Runnable() {
+            @Override
+            public void run() {
+                LoadJson(keyword);
+            }
+        });
+    }
 }
